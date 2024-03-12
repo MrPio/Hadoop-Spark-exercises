@@ -120,10 +120,24 @@ def op2():
                 (col('LONGITUDE') >= -135) & (col('LONGITUDE') <= -90)) \
         .groupBy('TMP') \
         .agg(count('*').alias('num_occurrences')) \
-        .orderBy(['num_occurrences', 'TMP'], ascending=False)
+        .orderBy(col("num_occurrences").desc(), col("TMP").asc())
     print('\n'.join([f'[(60,-135);(30,-90)],{row.TMP},{row.num_occurrences}' for row in df.rdd.take(10)]))
 
 
+def op3():
+    """
+    Op3: print out the station with the speed in knots needed several times and its count
+    (sorted by count, speed and station)
+    """
+    df = read_all_datasets() \
+        .withColumn('WDN_knots', split(col('WND'), ',')[1]) \
+        .groupBy('station', 'WDN_knots') \
+        .agg(count('*').alias('num_occurrences')) \
+        .orderBy(col("num_occurrences").desc(), col("WDN_knots").asc(), col("station").asc())
+    first_row = df.first()
+    print(f'{first_row.station},{first_row.WDN_knots},{first_row.num_occurrences}')
+
+
 if __name__ == "__main__":
-    op2()
+    op3()
     print(f'Done with PySpark in {time() - i_time} s.')
