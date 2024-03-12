@@ -3,6 +3,7 @@ from time import time
 
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
+from pyspark.sql.functions import split, col, count, size, format_string
 
 sc = SparkContext.getOrCreate()
 spark = SparkSession(sc)
@@ -82,6 +83,29 @@ def op1_slow():
     print('\n'.join(results))
 
 
+def read_all_datasets():
+    return spark.read.format('csv') \
+        .option('header', 'true') \
+        .load(f'{sys.argv[1]}/*/*.csv') \
+        .withColumn('year', split(col('_metadata.file_path'), '/')) \
+        .withColumn('year', col('year')[size('year') - 2]) \
+        .withColumn('station', split(col('_metadata.file_name'), '.csv')[0])
+
+
+def op1_fast():
+    """
+    Op1: print out the number of measurements taken per year for each station (sorted by year and station)
+    Note: this is fast as it exploits on spark dataframe transformations
+    """
+    df = read_all_datasets() \
+        .select(['_metadata.file_path', 'year', 'station']) \
+        .groupBy('year', 'station') \
+        .agg(count('*').alias('num_measures')) \
+        .orderBy('year', 'station') \
+        .select(format_string("%s,%s,%d", "year", "station", "num_measures").alias('result'))
+    print('\n'.join([row.result for row in df.rdd.collect()]))
+
+
 if __name__ == "__main__":
-    op1_slow()
+    op1_fast()
     print(f'Done with PySpark in {time() - i_time} s.')
