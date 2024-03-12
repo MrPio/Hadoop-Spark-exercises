@@ -4,6 +4,7 @@ from time import time
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import split, col, count, size, format_string
+from pyspark.sql.types import FloatType
 
 sc = SparkContext.getOrCreate()
 spark = SparkSession(sc)
@@ -106,6 +107,23 @@ def op1_fast():
     print('\n'.join([row.result for row in df.rdd.collect()]))
 
 
+def op2():
+    """
+    Op2: print the top 10 temperatures (TMP) with the highest number of occurrences and count recorded
+    in the highlighted area (sorted by number of occurrences and temperature)
+    """
+    df = read_all_datasets() \
+        .withColumn("LATITUDE", col('LATITUDE').cast(FloatType())) \
+        .withColumn("LONGITUDE", col('LONGITUDE').cast(FloatType())) \
+        .select(['LATITUDE', 'LONGITUDE', 'TMP']) \
+        .filter((col('LATITUDE') >= 30) & (col('LATITUDE') <= 60) &
+                (col('LONGITUDE') >= -135) & (col('LONGITUDE') <= -90)) \
+        .groupBy('TMP') \
+        .agg(count('*').alias('num_occurrences')) \
+        .orderBy(['num_occurrences', 'TMP'], ascending=False)
+    print('\n'.join([f'[(60,-135);(30,-90)],{row.TMP},{row.num_occurrences}' for row in df.rdd.take(10)]))
+
+
 if __name__ == "__main__":
-    op1_fast()
+    op2()
     print(f'Done with PySpark in {time() - i_time} s.')
