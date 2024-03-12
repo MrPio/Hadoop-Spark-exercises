@@ -1,7 +1,7 @@
 72410499999,9,29108
 Done with PySpark in 7.12822151184082 s.
 
-The full output is:
+The full output was:
 
 +-----------+---------+---------------+
 |    station|WDN_knots|num_occurrences|

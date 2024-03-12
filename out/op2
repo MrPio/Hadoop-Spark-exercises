@@ -10,4 +10,35 @@
 [(60,-135);(30,-90)],+0137,1,329
 Done with PySpark in 7.979594469070435 s.
 
-Note: I am not sure whether the TMP should be ordered in descending or ascending order
+The full output was:
+
++-------+---------------+
+|    TMP|num_occurrences|
++-------+---------------+
+|+9999,9|           4468|
+|+0141,1|            455|
+|+0144,1|            409|
+|+0149,1|            372|
+|+0145,1|            360|
+|+0136,1|            358|
+|+0160,1|            346|
+|+0156,1|            344|
+|+0157,1|            335|
+|+0137,1|            329|
+|+0152,1|            318|
+|+0134,1|            315|
+|+0142,1|            314|
+|+0133,1|            313|
+|+0129,1|            300|
+|+0162,1|            296|
+|+0159,1|            289|
+|+0140,1|            284|
+|+0163,1|            282|
+|+0147,1|            280|
++-------+---------------+
+only showing top 20 rows
+
+Done with PySpark in 7.786993026733398 s.
+
+
+Note: Not sure whether the TMP should be ordered in descending or ascending order
