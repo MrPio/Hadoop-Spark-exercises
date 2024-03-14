@@ -6,35 +6,18 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import split, col, count, size, format_string
 from pyspark.sql.types import FloatType
 
+# TODO: read_csv should be invoked only once (maybe using cache() method?)
+
 sc = SparkContext.getOrCreate()
 spark = SparkSession(sc)
 i_time = time()
-dataset_path = 'hdfs://192.168.104.45:9000/user/amircoli/BDA2324'
-output_path ='/home/amircoli/BDAchallenge2324/results/5'
-# Create the output path if it does not already exist
+dataset_path = 'hdfs:///BigDataCSV'  # 'hdfs://192.168.104.45:9000/user/amircoli/BDA2324'
+output_path = '/home/user/results/5'  # '/home/amircoli/BDAchallenge2324/results/5'
+# Create the output path if it doesn't already exist
 try:
     os.makedirs(output_path)
 except OSError as e:
     pass
-
-
-class WeatherStationRDD:
-    """
-    Holds information about a weather station dataset
-    """
-
-    def __init__(self, name, years):
-        self.name = name
-        self.years = years
-
-    def get_dataframe(self, year):
-        return spark.read.options(header='True', delimiter=',').csv(self.get_path(year))
-
-    def get_path(self, year):
-        return '{}/{}/{}.csv'.format(dataset_path, year, self.name)
-
-    def __str__(self):
-        return 'Station Name: {}, Years: {}'.format(self.name, self.years)
 
 
 def list_file_names(directory_path):
@@ -50,31 +33,9 @@ def list_file_names(directory_path):
     return sorted([str(file.getPath().getName()) for file in file_status_objects])
 
 
-years = []
-weather_stations = []
-
-
 def write_to_file(filename, content):
     with open('{}/{}'.format(output_path, filename), "w") as file:
         file.write(content)
-
-
-def scan_directory():
-    """
-    Scan the directory and store the csv information inside weather_stations objects
-    :return: None
-    """
-    for year in years:
-        for file in list_file_names('{}/{}/'.format(dataset_path, year)):
-            filename = file.split('.')[0]
-            found = False
-            for ws in weather_stations:
-                if ws.name == filename:
-                    ws.years.append(year)
-                    found = True
-                    break
-            if not found:
-                weather_stations.append(WeatherStationRDD(filename, [year]))
 
 
 def op1_slow():
@@ -82,8 +43,6 @@ def op1_slow():
     Op1: print out the number of measurements taken per year for each station (sorted by year and station)
     Note: this is elegant but slow as it separately invokes spark for each file without exploiting its capabilities
     """
-    global years
-    years = [int(y) for y in list_file_names(dataset_path)]
     scan_directory()
     results = []
     for year in years:
@@ -93,10 +52,10 @@ def op1_slow():
     write_to_file('o1.txt', '\n'.join(results))
 
 
-def read_all_datasets():
+def read_csv(year='*', station='*'):
     return spark.read.format('csv') \
         .option('header', 'true') \
-        .load('{}/*/*.csv'.format(dataset_path)) \
+        .load('{}/{}/{}.csv'.format(dataset_path, year, station)) \
         .withColumn('year', split(col('_metadata.file_path'), '/')) \
         .withColumn('year', col('year')[size('year') - 2]) \
         .withColumn('station', split(col('_metadata.file_name'), '.csv')[0])
@@ -157,7 +116,38 @@ def op3():
 
 
 if __name__ == '__main__':
+    # Read all csv files
+    dfs = []
+    for year in list_file_names(dataset_path):
+        for station in list_file_names('{}/{}'.format(dataset_path, year)):
+            dfs.append(read_csv(year, station))
+    union_df = dfs[0]
+    for df in dfs[1:]:
+        union_df = union_df.unionByName(df, allowMissingColumns=True)
+
+    # Step 2: Read CSV Files with Inferred Schema
+    folder_path = "/path/to/your/csv/folder"
+    csv_files = spark.read.option("header", "true").option("inferSchema", "true").csv(folder_path)
+    common_columns = set(csv_files.columns)
+    for file in csv_files.collect()[1:]:
+        common_columns = common_columns.intersection(set(file.columns))
+    dfs = []
+    for file in csv_files.collect():
+        reordered_df = file.select(*common_columns)
+        dfs.append(reordered_df)
+    final_df = dfs[0].union(dfs[1:])
+    final_df.show()
+
+    # TODO: The following bypasses the lack of the `allowMissingColumns' parameter in older Spark versions
+    #  by creating a dummy col to make the number even.
+    # cols = [len(df.columns) for df in df_list]
+    # max_cols = max(cols)
+    # df_list = [df.select(
+    #     *[col(c) for c in df.columns] + [lit(None).alias("col_{}".format(i + j)) for i in range(len(df.columns), max_cols)]
+    # ) for j, df in enumerate(df_list)]
+    # df_final = reduce(lambda x, y: x.unionByName(y), df_list)
+
     op1()
     op2()
     op3()
-    print 'Operations terminated in {} s.'.format(time() - i_time)
+    print('Operations terminated in {} s.'.format(time() - i_time))
