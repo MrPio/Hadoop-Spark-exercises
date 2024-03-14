@@ -1,4 +1,4 @@
-import sys
+import os
 from time import time
 
 from pyspark import SparkContext
@@ -10,7 +10,12 @@ sc = SparkContext.getOrCreate()
 spark = SparkSession(sc)
 i_time = time()
 dataset_path = 'hdfs://192.168.104.45:9000/user/amircoli/BDA2324'
-output_path = '/home/amircoli/BDAchallenge2324/results/6'
+output_path ='/home/amircoli/BDAchallenge2324/results/5'
+# Create the output path if it does not already exist
+try:
+    os.makedirs(output_path)
+except OSError as e:
+    pass
 
 
 class WeatherStationRDD:
@@ -26,10 +31,10 @@ class WeatherStationRDD:
         return spark.read.options(header='True', delimiter=',').csv(self.get_path(year))
 
     def get_path(self, year):
-        return f'{sys.argv[1]}/{year}/{self.name}.csv'
+        return '{}/{}/{}.csv'.format(dataset_path, year, self.name)
 
     def __str__(self):
-        return f'Station Name: {self.name}, Years: {self.years}'
+        return 'Station Name: {}, Years: {}'.format(self.name, self.years)
 
 
 def list_file_names(directory_path):
@@ -45,11 +50,13 @@ def list_file_names(directory_path):
     return sorted([str(file.getPath().getName()) for file in file_status_objects])
 
 
-years = [int(y) for y in list_file_names(sys.argv[1])]
-if len(sys.argv) < 2:
-    print('please specify the root folder of your dataset')
-    sys.exit(1)
+years = []
 weather_stations = []
+
+
+def write_to_file(filename, content):
+    with open('{}/{}'.format(output_path, filename), "w") as file:
+        file.write(content)
 
 
 def scan_directory():
@@ -58,7 +65,7 @@ def scan_directory():
     :return: None
     """
     for year in years:
-        for file in list_file_names(f'{sys.argv[1]}/{year}/'):
+        for file in list_file_names('{}/{}/'.format(dataset_path, year)):
             filename = file.split('.')[0]
             found = False
             for ws in weather_stations:
@@ -75,25 +82,27 @@ def op1_slow():
     Op1: print out the number of measurements taken per year for each station (sorted by year and station)
     Note: this is elegant but slow as it separately invokes spark for each file without exploiting its capabilities
     """
+    global years
+    years = [int(y) for y in list_file_names(dataset_path)]
     scan_directory()
     results = []
     for year in years:
         for ws in weather_stations:
             if year in ws.years:
-                results.append(f'{year},{ws.name},{ws.get_dataframe(year).count()}')
-    print('\n'.join(results))
+                results.append('{},{},{}'.format(year, ws.name, ws.get_dataframe(year).count()))
+    write_to_file('o1.txt', '\n'.join(results))
 
 
 def read_all_datasets():
     return spark.read.format('csv') \
         .option('header', 'true') \
-        .load(f'{sys.argv[1]}/*/*.csv') \
+        .load('{}/*/*.csv'.format(dataset_path)) \
         .withColumn('year', split(col('_metadata.file_path'), '/')) \
         .withColumn('year', col('year')[size('year') - 2]) \
         .withColumn('station', split(col('_metadata.file_name'), '.csv')[0])
 
 
-def op1_fast():
+def op1():
     """
     Op1: print out the number of measurements taken per year for each station (sorted by year and station)
     Note: this is fast as it exploits on spark dataframe transformations
@@ -104,7 +113,11 @@ def op1_fast():
         .agg(count('*').alias('num_measures')) \
         .orderBy('year', 'station') \
         .select(format_string("%s,%s,%d", "year", "station", "num_measures").alias('result'))
-    print('\n'.join([row.result for row in df.rdd.collect()]))
+    # out_file_path = '{}/o1.txt'.format(output_path)
+    # if os.path.exists(out_file_path):
+    #     os.remove(out_file_path)
+    # df.write.format("text").option("header", "false").mode("append").save(out_file_path)
+    write_to_file('o1.txt', '\n'.join([row.result for row in df.rdd.collect()]))
 
 
 def op2():
@@ -121,23 +134,30 @@ def op2():
         .groupBy('TMP') \
         .agg(count('*').alias('num_occurrences')) \
         .orderBy(col("num_occurrences").desc(), col("TMP").asc())
-    print('\n'.join([f'[(60,-135);(30,-90)],{row.TMP},{row.num_occurrences}' for row in df.rdd.take(10)]))
+    results = []
+    for row in df.rdd.take(10):
+        tmp = float(str(row.TMP).split(',')[0]) / 10
+        results.append('[(60,-135);(30,-90)],{},{})'.format(tmp, row.num_occurrences))
+    write_to_file('o2.txt', '\n'.join(results))
 
 
 def op3():
     """
-    Op3: print out the station with the speed in knots needed several times and its count
+    Op3: print out the station with the speed in knots and its count
     (sorted by count, speed and station)
     """
     df = read_all_datasets() \
+        .select(['station', 'WND']) \
         .withColumn('WDN_knots', split(col('WND'), ',')[1]) \
         .groupBy('station', 'WDN_knots') \
         .agg(count('*').alias('num_occurrences')) \
         .orderBy(col("num_occurrences").desc(), col("WDN_knots").asc(), col("station").asc())
     first_row = df.first()
-    print(f'{first_row.station},{first_row.WDN_knots},{first_row.num_occurrences}')
+    write_to_file('o3.txt', '{},{},{}'.format(first_row.station, first_row.WDN_knots, first_row.num_occurrences))
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
+    op1()
+    op2()
     op3()
-    print(f'Done with PySpark in {time() - i_time} s.')
+    print 'Operations terminated in {} s.'.format(time() - i_time)
