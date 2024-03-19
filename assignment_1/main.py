@@ -1,19 +1,20 @@
 import os
-from functools import reduce
 from time import time
 
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import split, col, count, size, format_string
+from pyspark.sql.functions import split, col, count, size, lit
 from pyspark.sql.types import FloatType
 
 sc = SparkContext.getOrCreate()
 spark = SparkSession(sc)
 i_time = time()
-DATASET_PATH = 'hdfs:///BigDataCSV'  # 'hdfs://192.168.104.45:9000/user/amircoli/BDA2324'
-OUTPUT_PATH = '/home/user/results/5'  # '/home/amircoli/BDAchallenge2324/results/5'
+
+DATASET_PATH = 'hdfs://192.168.104.45:9000/user/amircoli/BDA2324'
+OUTPUT_PATH = '/home/amircoli/BDAchallenge2324/results/5'
+
 COLUMNS_OF_INTEREST = ['LATITUDE', 'LONGITUDE', 'WND', 'TMP']
-COLUMNS_HAVE_SAME_INDEX = False
+ASSUME_COLUMNS_OF_INTEREST_HAVE_SAME_INDEX = False
 
 # Create the output path if it doesn't already exist
 try:
@@ -32,9 +33,15 @@ def list_file_names(directory_path):
     return sorted([str(file.getPath().getName()) for file in file_status_objects])
 
 
-def write_to_file(filename, content):
-    with open('{}/{}'.format(OUTPUT_PATH, filename), "w") as file:
-        file.write(content)
+def write_to_file(filename, df):
+    """
+    Export a dataframe in the specified path as a CSV file
+    """
+    df.write \
+        .format("csv") \
+        .option("header", "true") \
+        .mode("overwrite") \
+        .save('file://{}/{}'.format(OUTPUT_PATH, filename))
 
 
 def read_headers():
@@ -73,20 +80,15 @@ def read_csv(csv_files=None):
 
 def op1(df):
     """
-    Op1: print out the number of measurements taken per year for each station (sorted by year and station)
-    Note: this is fast as it exploits on spark dataframe transformations
+    Op1: print out the number of measurements taken per year
+    for each station (sorted by year and station)
     """
     result_df = df \
         .select(['year', 'station']) \
         .groupBy('year', 'station') \
         .agg(count('*').alias('num_measures')) \
-        .orderBy('year', 'station') \
-        .select(format_string("%s,%s,%d", "year", "station", "num_measures").alias('result'))
-    # out_file_path = '{}/o1.txt'.format(output_path)
-    # if os.path.exists(out_file_path):
-    #     os.remove(out_file_path)
-    # df.write.format("text").option("header", "false").mode("append").save(out_file_path)
-    write_to_file('o1.txt', '\n'.join([row.result for row in result_df.rdd.collect()]))
+        .orderBy('year', 'station')
+    write_to_file('op1', result_df)
 
 
 def op2(df):
@@ -97,17 +99,17 @@ def op2(df):
     result_df = df \
         .withColumn("LATITUDE", col('LATITUDE').cast(FloatType())) \
         .withColumn("LONGITUDE", col('LONGITUDE').cast(FloatType())) \
+        .withColumn("TMP", split(col('TMP'), ',')[0].cast(FloatType()) / 10) \
         .select(['LATITUDE', 'LONGITUDE', 'TMP']) \
         .filter((col('LATITUDE') >= 30) & (col('LATITUDE') <= 60) &
                 (col('LONGITUDE') >= -135) & (col('LONGITUDE') <= -90)) \
         .groupBy('TMP') \
         .agg(count('*').alias('num_occurrences')) \
-        .orderBy(col("num_occurrences").desc(), col("TMP").asc())
-    results = []
-    for row in result_df.rdd.take(10):
-        tmp = float(str(row.TMP).split(',')[0]) / 10
-        results.append('[(60,-135);(30,-90)],{},{})'.format(tmp, row.num_occurrences))
-    write_to_file('o2.txt', '\n'.join(results))
+        .orderBy(col("num_occurrences").desc(), col("TMP").asc()) \
+        .withColumn('Location', lit('[(60,-135);(30,-90)]')) \
+        .select(['Location', 'TMP', 'num_occurrences']) \
+        .limit(10)
+    write_to_file('op2', result_df)
 
 
 def op3(df):
@@ -117,36 +119,32 @@ def op3(df):
     """
     result_df = df \
         .select(['station', 'WND']) \
-        .withColumn('WDN_knots', split(col('WND'), ',')[1]) \
-        .groupBy('station', 'WDN_knots') \
+        .withColumn('WND', split(col('WND'), ',')[1]) \
+        .groupBy('station', 'WND') \
         .agg(count('*').alias('num_occurrences')) \
-        .orderBy(col("num_occurrences").desc(), col("WDN_knots").asc(), col("station").asc())
-    first_row = result_df.first()
-    write_to_file('o3.txt', '{},{},{}'.format(first_row.station, first_row.WDN_knots, first_row.num_occurrences))
+        .orderBy(col("num_occurrences").desc(), 
+                 col("WND").asc(), col("station").asc()) \
+        .limit(1)
+    write_to_file('op3', result_df)
 
 
 if __name__ == '__main__':
     # Read all csv files
-    if COLUMNS_HAVE_SAME_INDEX:
+    if ASSUME_COLUMNS_OF_INTEREST_HAVE_SAME_INDEX:
         union_df = read_csv()
     else:
         headers = read_headers()
-        print('CSV headers checked in {} s.'.format(time() - i_time))
         dfs = []
         for stations in headers.values():
             files = ['{}/{}/{}'.format(DATASET_PATH, year, station) for year, station in stations]
             dfs.append(read_csv(files))
-        # union_df = dfs[0]
-        # for df in dfs[1:]:
-        #     union_df = union_df.unionByName(df, allowMissingColumns=True)
-        # Alternatively, with the `reduce` spark function
-        union_df = reduce(lambda x, y: x.unionByName(y, allowMissingColumns=True), dfs)
-    # union_df.cache()
+        union_df = dfs[0]
+        for df in dfs[1:]:
+            union_df = union_df.unionByName(df, allowMissingColumns=True)
+        # Alternatively, with the `reduce` spark function:
+        # union_df = reduce(lambda x, y: x.unionByName(y, allowMissingColumns=True), dfs)
 
-    print('Dataframe loaded (lazy) in {} s.'.format(time() - i_time))
     op1(union_df)
-    print('Op 1 terminated in {} s.'.format(time() - i_time))
     op2(union_df)
-    print('Op 2 terminated in {} s.'.format(time() - i_time))
     op3(union_df)
-    print('All operations have terminated in {} s.'.format(time() - i_time))
+    # print 'All operations have terminated in {} s.'.format(time() - i_time)
