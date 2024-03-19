@@ -1,4 +1,4 @@
-# Assignment-BDD-ML
+# Assignments-BDA-ML
 Repository containing the activities carried out for the "Big Data Analytics and Machine Learning" UNIVPM course exercises year 2023-2024
 
 ## Assignment 1 (Spark)
