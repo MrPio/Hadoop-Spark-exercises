@@ -11,3 +11,10 @@ This task revolves around the <a href="https://www.databricks.com/it/glossary/py
 <a href="assignment_1/main.py">✅ Solution</a>
 
 <a href="assignment_1/slideshow.pdf">📙 Slideshow PDF</a>
+
+## Assignment 2 (ROLAP)
+The task is to reverse engineer a given SQL database.
+
+<a href="assignment_2/README.txt">📘 Assignment TXT</a>
+
+<a href="assignment_1/slideshow.pdf">📙 Slideshow PDF</a>
