@@ -17,4 +17,4 @@ The task is to reverse engineer a given SQL database.
 
 <a href="assignment_2/README.txt">📘 Assignment TXT</a>
 
-<a href="assignment_1/slideshow.pdf">📙 Slideshow PDF</a>
+<a href="assignment_2/slideshow.pdf">📙 Slideshow PDF</a>
