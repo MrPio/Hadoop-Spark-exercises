@@ -1,5 +1,5 @@
-# Assignments-BDA-ML
-Repository containing the activities carried out for the "Big Data Analytics and Machine Learning" UNIVPM course exercises year 2023-2024
+# Big Data Analytics Homeworks
+Repository containing the "Big Data Analytics and Machine Learning" UNIVPM course exercises year 2023-2024
 
 ## Assignment 1 (Spark)
 This task revolves around the <a href="https://www.databricks.com/it/glossary/pyspark">PySpark</a> framework and consists of implementing 3 queries and executing them in as little time as possible on a large dataset.
